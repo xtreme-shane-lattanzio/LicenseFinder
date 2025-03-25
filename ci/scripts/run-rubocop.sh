@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-cd LicenseFinder
+#cd LicenseFinder
 
 gem update --system
 bundle install --without runtime default
@@ -12,4 +12,4 @@ gem install rubocop --version $rubocop_version
 gem install rubocop-performance --version $rubocop_performance_version
 
 echo "Running Rubocop ..."
-/usr/local/bundle/bin/rubocop --require rubocop-performance
+rubocop --require rubocop-performance
