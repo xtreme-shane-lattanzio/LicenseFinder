@@ -1,0 +1,127 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# GitHub recommends pinning actions to a commit SHA.
+# To get a newer version, you will need to update the SHA.
+# You can also reference a tag or branch, but the action may change without warning.
+
+name: Release
+
+#on:
+#  push:
+#    # Sequence of patterns matched against refs/tags
+#    tags:
+#      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+
+on:
+#  workflow_run:
+#    workflows: ["CI build"]
+#    types:
+#      - completed
+
+  workflow_dispatch:
+    inputs:
+      bump-level:
+        required: true
+        type: choice
+        description: 'The semver bump level'
+        options:
+          - 'major'
+          - 'minor'
+          - 'patch'
+          - 'premajor'
+          - 'preminor'
+          - 'prepatch'
+          - 'prerelease'
+        default: 'patch'
+
+      prerelease-tag:
+        required: false
+        description: 'The tag to use for prereleases'
+        default: 'alpha'
+
+jobs:
+  publish-github-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get Latest Tag
+        id: current
+        run: |
+          git fetch --tags
+          latest_tag=$(git tag --sort=taggerdate | tail -n 1)
+          echo "current version is: $latest_tag"
+          echo "latest_tag=$latest_tag" >> $GITHUB_ENV
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ env.latest_tag }}
+          bump-level: ${{ github.event.inputs.bump-level }}
+          prerelease-tag: ${{ github.event.inputs.prerelease-tag }}
+
+      - name: Publish Tag
+        run: |
+          git fetch --tags
+          latest_tag=$(git tag --sort=taggerdate | tail -n 1)
+          new_tag=${{ steps.bump.outputs.new_version }}
+          if [[ $(git rev-list $latest_tag..HEAD --count) -gt 0 ]]; then
+            git config user.name "GitHub Actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            echo "${new_tag:1}" > VERSION
+            cat VERSION
+            git add VERSION
+            git commit -m "Update version file"
+            git push
+
+            git tag $new_tag
+            git push origin $new_tag
+          else
+            echo "No new commits since last tag. Skipping tag push."
+          fi
+      - name: Generate Changelog
+        run: echo "# Good things have arrived" > ${{ github.workspace }}-CHANGELOG.txt
+      - name: Github Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.new_version }}
+          body: |
+            Changes in this Release
+            - First Change
+            - Second Change
+          draft: false
+          prerelease: false
+          files: |
+            ${{ github.workspace }}-CHANGELOG.txt    
+
+#  build:
+#    needs: publish-github-release
+#    name: Build + Publish Gem
+#    runs-on: ubuntu-latest
+#    permissions:
+#      packages: write
+#      contents: read
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#      - name: Set up Ruby 3.1
+#        uses: ruby/setup-ruby@v1
+#        with:
+#          ruby-version: '3.1'
+#      - run: bundle install
+#
+#      - name: Publish to RubyGems
+#        run: |
+#          mkdir -p $HOME/.gem
+#          touch $HOME/.gem/credentials
+#          chmod 0600 $HOME/.gem/credentials
+#          printf -- "---\n:rubygems_api_key: ${GEM_HOST_API_KEY}\n" > $HOME/.gem/credentials
+#          gem build *.gemspec
+#          gem push *.gem
+#        env:
+#          GEM_HOST_API_KEY: "${{secrets.RUBYGEMS_API_KEY}}"
